@@ -81,6 +81,7 @@ fp = open('gps.txt','r')
 cnt = 0
 points = []
 step = TimeStepTracker()
+uuid = None
 
 current_datetime_object = None
 if args.start[0] is not None:
@@ -124,24 +125,26 @@ while True:
            "vel":res.groups()[0]
         }
         print data
-
-        annt = client.createAnnotation(args.esn[0], eents, data, args.namespace[0])
-        if annt is None:
-             print 'Failed to create annotations'
-             exit()
+        
+        if uuid is None:
+            annt = client.createAnnotation(args.esn[0], eents, data, args.namespace[0])
+            if annt is None:
+                print 'Failed to create annotations'
+                exit()
+            uuid = annt['uuid']
         else:
-             print annt
-             uuid = annt['uuid']
-             print uuid
+            annt = client.updateAnnotation(uuid, args.esn[0], eents, data, args.namespace[0], 'hb')
+            if annt is None:
+                print 'Failed to update annotation??'
+                exit()
+
+        cnt = cnt + 1
+
+        if cnt == 2:
              t.sleep(1.0) # adding this to fix a timing issue.  Attempt to read back the annotation right away will fail
              r = client.getAnnotations(args.esn[0], [uuid]) #['ff4f9566-f251-11e7-971f-06936ec4fa5b']) [annt['uuid']])
              print '--------------------'
              print r
              exit()
-        
-        cnt = cnt + 1
-        
-        if cnt == 1:
-            exit()
-        
-        # print t.sleep(0.50)
+
+        print t.sleep(0.50)

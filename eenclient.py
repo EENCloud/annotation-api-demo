@@ -31,7 +31,7 @@ class EENClient(object):
         headers = {'Content-Type':'application/json'}
         body = {'token':token}
         r = self.session.post(url, headers=headers,json=body)
-        print r.headers
+        #print r.headers
         # Set-cookies attribute in the resonse header contains the auth_key.  Session
         # object will manage this for us.
         if r.status_code == 200:
@@ -68,10 +68,9 @@ class EENClient(object):
             return None
 
     def updateAnnotation(self,uuid,esn,ts,payload,ns=None,update_type='mod'):
-        url = 'https://{}/annt/set?c={}&ts={}&ns={}&type={}'.format(HOST,esn,ts,ns,update_type)
-        print url
+        url = 'https://{}/annt/set?u={}&c={}&ts={}&ns={}&type={}'.format(HOST,uuid,esn,ts,ns,update_type)
         headers = {'Content-Type':'application/json'}
-        r = self.session.put(url, headers=headers,json=payload)
+        r = self.session.post(url, headers=headers,json=payload)
         if r.status_code == 200:
             return json.loads(r.content)
         else:
