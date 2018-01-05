@@ -3,7 +3,7 @@ import requests
 import time as t
 import json
 import argparse
-from gpsparse import lon_to_decimal, lat_to_decimal
+from gpsparse import prog_speed, parseLatLine, parseLonLine, getDateObjectForLine, TimeStepTracker
 from eenclient import EENClient
 from datetime import datetime, timedelta
 
@@ -39,43 +39,7 @@ if device is None:
     print 'Failed to get device: {}'.format(esn)
     exit()
 
-
-# Define regular expressions to assist us in parsing the GPS file
-# Regex to match lines with timestamp information
-prog_ts = re.compile('\[(\d+-\d+-\d+)\s+-\s+(\d+:\d+:\d+)')
-# Regex to match lines with latitude and longitude information
-prog_lat_lon = re.compile('^\s*(.+)\xa1\xe3(.+)\'(.+)" ([EWSN])')
-# Regex to match lines containing speed information
-prog_speed = re.compile('Speed:\s*(\S+)\s*KPH')
-
-# Helper function to convert line of text from the file into a date object.
-def getDateObjectForLine(line):
-    # Test that the current line looks like a timestamp
-    is_time_stamp = prog_ts.match(line)
-    if is_time_stamp is None:
-        return None
-    else:
-        date,time = is_time_stamp.groups()  
-        dtstr = "{} {}".format(date,time)
-        return datetime.strptime(dtstr, '%Y-%m-%d %H:%M:%S')
-
-# Helper class to track the timedelta between GPS readings.  We use to 
-# preserve the time delta between GPS readings when the user specifies
-# a custom start timestamp.
-class TimeStepTracker(object):    
-    def __init__(self):
-        self.previous_datetime_object = None
-    
-    def getTimeDelta(self,next_date):
-        if self.previous_datetime_object is None:
-            self.previous_datetime_object = next_date
-            return next_date - next_date
-        else:
-            timedelta = next_date - self.previous_datetime_object
-            self.previous_datetime_object = next_date
-            return timedelta        
-
-
+# Open the GPS data file.
 fp = open('gps.txt','r')
 
 cnt = 0
@@ -83,68 +47,80 @@ points = []
 step = TimeStepTracker()
 uuid = None
 
-current_datetime_object = None
+current_datetime_object = None  # Tracks the current timestamp of the annotation we will be posting to the API.
 if args.start[0] is not None:
+    # override the starting timestamp in the GPS file with the one given in the command line args.
     current_datetime_object = datetime.strptime(args.start[0], '%Y%m%d%H%M%S')
     
 while True:
     # Loop through the file one line at a time.
     line = fp.readline()
     if not line: break  # break the loop when we reach the end of file.
-        
+    
+    #Current line should be a date string.  Convert it to a Python date object.
     datetime_object = getDateObjectForLine(line)
     if datetime_object:
+        # Compute how much time elapsed since the last GPS reading.
         timedelta = step.getTimeDelta(datetime_object)
-        
+
         if current_datetime_object is None:
+            # set current_datetime_object the datetime_object if we didn't override the timestamp in the input args.
             current_datetime_object = datetime_object
         
+        # increment the time and convert to EEN format.
         current_datetime_object = current_datetime_object + timedelta
-        
         eents = current_datetime_object.strftime('%Y%m%d%H%M%S.000')
         
         # Read the longitude.
         l = fp.readline()
-        lon_res = prog_lat_lon.match(l)
-        lon = lon_res.groups()
-        lon_dd = lon_to_decimal(float(lon[0]),float(lon[1]),float(lon[2]),lon[3])
+        lon_dd = parseLonLine(l)
 
         # Read the latitude.
         l = fp.readline()
-        lat_res = prog_lat_lon.match(l)
-        lat = lat_res.groups()
-        lat_dd = lat_to_decimal(float(lat[0]),float(lat[1]),float(lat[2]),lat[3])
+        lat_dd = parseLatLine(l)
 
         # Read the velocity.
         l = fp.readline()
         res = prog_speed.match(l)
         data = {
-           "ts":eents,
+           # "ts":eents,  # don't need timestamp here since the API will add it for us.
            "lat":lat_dd,
            "lon":lon_dd,
-           "vel":res.groups()[0]
+           # "vel":res.groups()[0]  # Don't save the velocity for now...  but could add it back later.
         }
         print data
-        
+
+        # Do we have an annotation yet?  If not, create one.
         if uuid is None:
-            annt = client.createAnnotation(args.esn[0], eents, data, args.namespace[0])
+            annt = client.createAnnotation(args.esn[0], eents, {'start':data}, args.namespace[0])
             if annt is None:
                 print 'Failed to create annotations'
                 exit()
             uuid = annt['uuid']
         else:
+            # Update the annotation with the GPS data.   We are using the 'heartbeat' update type.
+            # The API will create a '_hb' attribute in the annotation containing an array of data 
+            # from all the update API calls.  These calls should be performed within 10 seconds of each other.
+            # Otherwise, the annotation will be closed automatically and no future updates will be allowed.
             annt = client.updateAnnotation(uuid, args.esn[0], eents, data, args.namespace[0], 'hb')
             if annt is None:
                 print 'Failed to update annotation??'
                 exit()
 
+        # Track how many annotation updates we have made.  For purposes of this demo, we only take the
+        # first five GPS readings from the file.
         cnt = cnt + 1
+        if cnt == 5:
+            # Close the annotation
+            # increment the time and convert to EEN format.
+            current_datetime_object = current_datetime_object + timedelta
+            eents = current_datetime_object.strftime('%Y%m%d%H%M%S.000')
+            end_annt = client.updateAnnotation(uuid, args.esn[0], eents, {'end':'End of annotation.  Put extra data here.'}, args.namespace[0], 'end')
+            t.sleep(2.0) # adding this to fix a timing issue.  Attempt to read back the annotation right away will fail
+            r = client.getAnnotations(args.esn[0], [uuid])
+            print '--------------------'
+            print json.dumps(r[0])
+            exit()
 
-        if cnt == 2:
-             t.sleep(1.0) # adding this to fix a timing issue.  Attempt to read back the annotation right away will fail
-             r = client.getAnnotations(args.esn[0], [uuid]) #['ff4f9566-f251-11e7-971f-06936ec4fa5b']) [annt['uuid']])
-             print '--------------------'
-             print r
-             exit()
-
-        print t.sleep(0.50)
+        # simulate the heartbeat time interval.
+        t.sleep(2.0)

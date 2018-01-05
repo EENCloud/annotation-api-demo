@@ -61,7 +61,10 @@ class EENClient(object):
     def createAnnotation(self,esn,ts,payload,ns):
         url = 'https://{}/annt/set?c={}&ts={}&ns={}'.format(HOST,esn,ts,ns)
         headers = {'Content-Type':'application/json'}
-        r = self.session.put(url, headers=headers,json=payload)        
+        print payload, url
+        r = self.session.put(url, headers=headers,json=payload)      
+        print r.content
+        print r.status_code  
         if r.status_code == 200:
             return json.loads(r.content)
         else:
