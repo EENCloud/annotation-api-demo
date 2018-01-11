@@ -57,14 +57,32 @@ class EENClient(object):
             return json.loads(r.content)
         else:
             return None
+    
+    def getAnnotationsList(self,esn,start,end,count=None,uuid=None,namespace=None):
+        url = 'https://{}/annt/annt/list'.format(HOST)
+        payload = {'id':esn,'start_timestamp':start,'end_timestamp':end}
+        print payload
+        if count is not None:
+            payload['count'] = count
+        if uuid is not None:
+            payload['uuid'] = uuid
+        if namespace is not None:
+            payload['namespace'] = namespace
+        r = self.session.get(url,params=payload)
+        # print r.status_code
+        # print r.content
+        if r.status_code == 200:
+            return json.loads(r.content)
+        else:
+            return None        
 
     def createAnnotation(self,esn,ts,payload,ns):
         url = 'https://{}/annt/set?c={}&ts={}&ns={}'.format(HOST,esn,ts,ns)
         headers = {'Content-Type':'application/json'}
-        print payload, url
-        r = self.session.put(url, headers=headers,json=payload)      
-        print r.content
-        print r.status_code  
+        # print payload, url
+        r = self.session.put(url, headers=headers,json=payload)
+        # print r.content
+        # print r.status_code  
         if r.status_code == 200:
             return json.loads(r.content)
         else:
@@ -74,6 +92,9 @@ class EENClient(object):
         url = 'https://{}/annt/set?u={}&c={}&ts={}&ns={}&type={}'.format(HOST,uuid,esn,ts,ns,update_type)
         headers = {'Content-Type':'application/json'}
         r = self.session.post(url, headers=headers,json=payload)
+        # print url
+        # print r.content
+        # print r.status_code
         if r.status_code == 200:
             return json.loads(r.content)
         else:

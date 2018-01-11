@@ -2,7 +2,7 @@ import re
 import requests
 import time as t
 import json
-import argparse
+import argparse 
 from gpsparse import prog_speed, parseLatLine, parseLonLine, getDateObjectForLine, TimeStepTracker
 from eenclient import EENClient
 from datetime import datetime, timedelta
@@ -14,7 +14,7 @@ parser.add_argument('username', metavar='u', type=str, nargs=1,help='username')
 parser.add_argument('password', metavar='p', type=str, nargs=1,help='password')
 parser.add_argument('esn', metavar='e', type=str, nargs=1, help='camera device esn')
 parser.add_argument('--namespace', nargs=1, type=int, default=[300])  #Default namespace for GPS data is 300.
-parser.add_argument('--start',nargs=1,type=str)
+parser.add_argument('--start',nargs=1,type=str, default=None)
 args = parser.parse_args()
 
 # Setup the API client
@@ -47,11 +47,12 @@ points = []
 step = TimeStepTracker()
 uuid = None
 
+print args.start
 current_datetime_object = None  # Tracks the current timestamp of the annotation we will be posting to the API.
-if args.start[0] is not None:
+if args.start is not None:
     # override the starting timestamp in the GPS file with the one given in the command line args.
     current_datetime_object = datetime.strptime(args.start[0], '%Y%m%d%H%M%S')
-    
+
 while True:
     # Loop through the file one line at a time.
     line = fp.readline()
@@ -117,10 +118,16 @@ while True:
             eents = current_datetime_object.strftime('%Y%m%d%H%M%S.000')
             end_annt = client.updateAnnotation(uuid, args.esn[0], eents, {'end':'End of annotation.  Put extra data here.'}, args.namespace[0], 'end')
             t.sleep(2.0) # adding this to fix a timing issue.  Attempt to read back the annotation right away will fail
-            r = client.getAnnotations(args.esn[0], [uuid])
-            print '--------------------'
-            print json.dumps(r[0])
-            exit()
+            break
 
         # simulate the heartbeat time interval.
         t.sleep(2.0)
+        
+        
+# Read back the annotation using the API, display the results.
+if uuid is not None:
+    r = client.getAnnotations(args.esn[0], [uuid])
+    print '--------------------'
+    print json.dumps(r[0])
+    exit()
+
